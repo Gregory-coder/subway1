@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  pool:
+    build: .
+    container_name: xmr-pool
+    restart: unless-stopped
+    ports:
+      - "3333:3333"   # Stratum
+      - "8080:8080"   # Web Dashboard / API
+    environment:
+      - POOL_WALLET_ADDRESS=${POOL_WALLET_ADDRESS}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-xmr_pool}
+      - POSTGRES_USER=${POSTGRES_USER:-pool}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-poolpassword}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DAEMON_RPC_HOST=monerod
+      - DAEMON_RPC_PORT=18081
+      - WALLET_RPC_HOST=monero-wallet-rpc
+      - WALLET_RPC_PORT=18082
+      - WALLET_RPC_USER=${WALLET_RPC_USER:-rpc_user}
+      - WALLET_RPC_PASSWORD=${WALLET_RPC_PASSWORD:-rpc_password}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      monerod:
+        condition: service_started
+      monero-wallet-rpc:
+        condition: service_started
+    networks:
+      - pool-network
+
+  monerod:
+    image: sethsimmons/simple-monerod:latest
+    container_name: monerod
+    restart: unless-stopped
+    volumes:
+      - monero-data:/home/monero/.bitmonero
+    ports:
+      - "18080:18080"  # P2P
+      - "18081:18081"  # RPC
+    command: >
+      monerod
+      --non-interactive
+      --restricted-rpc
+      --rpc-bind-ip=0.0.0.0
+      --rpc-bind-port=18081
+      --confirm-external-bind
+      --log-level=0
+      --max-concurrency=4
+      --db-sync-mode=safe
+    networks:
+      - pool-network
+
+  monero-wallet-rpc:
+    image: sethsimmons/simple-monerod:latest
+    container_name: monero-wallet-rpc
+    restart: unless-stopped
+    volumes:
+      - wallet-data:/home/monero/wallet
+    ports:
+      - "18082:18082"
+    entrypoint: ""
+    command: >
+      monero-wallet-rpc
+      --non-interactive
+      --rpc-bind-ip=0.0.0.0
+      --rpc-bind-port=18082
+      --confirm-external-bind
+      --rpc-login=${WALLET_RPC_USER:-rpc_user}:${WALLET_RPC_PASSWORD:-rpc_password}
+      --daemon-address=monerod:18081
+      --wallet-dir=/home/monero/wallet
+      --disable-rpc-login=0
+    depends_on:
+      - monerod
+    networks:
+      - pool-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: xmr-pool-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - pool-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: xmr-pool-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-xmr_pool}
+      - POSTGRES_USER=${POSTGRES_USER:-pool}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-poolpassword}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pool}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - pool-network
+
+volumes:
+  monero-data:
+  wallet-data:
+  redis-data:
+  postgres-data:
+
+networks:
+  pool-network:
+    driver: bridge

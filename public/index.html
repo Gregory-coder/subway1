@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XMR Mining Pool</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #eee; padding: 20px; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { color: #ff6b35; margin-bottom: 10px; font-size: 2em; }
+    h2 { color: #ff6b35; margin: 20px 0 10px; font-size: 1.4em; }
+    .subtitle { color: #888; margin-bottom: 30px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+    .stat-card { background: #16213e; padding: 20px; border-radius: 8px; border: 1px solid #0f3460; }
+    .stat-card .label { color: #888; font-size: 0.85em; text-transform: uppercase; }
+    .stat-card .value { font-size: 1.8em; font-weight: bold; color: #fff; margin-top: 5px; }
+    .stat-card .unit { font-size: 0.6em; color: #888; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #0f3460; }
+    th { background: #16213e; color: #ff6b35; font-size: 0.85em; text-transform: uppercase; }
+    td { font-size: 0.9em; }
+    tr:hover { background: #16213e40; }
+    .status-confirmed { color: #4caf50; }
+    .status-pending { color: #ff9800; }
+    .status-orphaned { color: #f44336; }
+    .search-box { margin-bottom: 20px; }
+    .search-box input { width: 100%; max-width: 600px; padding: 12px 16px; background: #16213e; border: 1px solid #0f3460; border-radius: 6px; color: #eee; font-size: 1em; }
+    .search-box input::placeholder { color: #555; }
+    .search-box button { padding: 12px 24px; background: #ff6b35; border: none; border-radius: 6px; color: #fff; cursor: pointer; margin-left: 10px; font-size: 1em; }
+    .search-box button:hover { background: #e55a2b; }
+    .miner-info { background: #16213e; padding: 20px; border-radius: 8px; margin-bottom: 20px; display: none; }
+    .miner-info.visible { display: block; }
+    .addr { font-family: monospace; font-size: 0.75em; word-break: break-all; }
+    .hash { font-family: monospace; font-size: 0.8em; }
+    #error { color: #f44336; margin: 10px 0; display: none; }
+    .footer { text-align: center; color: #555; margin-top: 40px; padding: 20px; border-top: 1px solid #0f3460; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>XMR Mining Pool</h1>
+    <p class="subtitle">Monero RandomX • PPLNS • 0.1% Fee • No Minimum Payout</p>
+
+    <div class="stats-grid" id="poolStats">
+      <div class="stat-card">
+        <div class="label">Pool Hashrate</div>
+        <div class="value" id="poolHashrate">-<span class="unit"> H/s</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Miners Online</div>
+        <div class="value" id="minersOnline">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Block Height</div>
+        <div class="value" id="blockHeight">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Pool Fee</div>
+        <div class="value" id="poolFee">-</div>
+      </div>
+    </div>
+
+    <h2>Miner Lookup</h2>
+    <div class="search-box">
+      <input type="text" id="minerAddress" placeholder="Enter your Monero wallet address...">
+      <button onclick="lookupMiner()">Lookup</button>
+    </div>
+    <div id="error"></div>
+    <div class="miner-info" id="minerInfo">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="label">Your Hashrate</div>
+          <div class="value" id="minerHashrate">-<span class="unit"> H/s</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Hashes</div>
+          <div class="value" id="minerHashes">-</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Pending Balance</div>
+          <div class="value" id="minerPending">-<span class="unit"> XMR</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Total Paid</div>
+          <div class="value" id="minerPaid">-<span class="unit"> XMR</span></div>
+        </div>
+      </div>
+    </div>
+
+    <h2>Recent Blocks</h2>
+    <table id="blocksTable">
+      <thead>
+        <tr><th>Height</th><th>Status</th><th>Reward</th><th>Finder</th><th>Found</th></tr>
+      </thead>
+      <tbody id="blocksBody"></tbody>
+    </table>
+
+    <h2>Recent Payouts</h2>
+    <table id="payoutsTable">
+      <thead>
+        <tr><th>Miner</th><th>Amount</th><th>TX Hash</th><th>Status</th><th>Time</th></tr>
+      </thead>
+      <tbody id="payoutsBody"></tbody>
+    </table>
+
+    <div class="footer">
+      <p>Connect your miner: <code>stratum+tcp://YOUR_POOL_IP:3333</code></p>
+      <p style="margin-top:5px">XMRig config: <code>--url YOUR_POOL_IP:3333 --user YOUR_WALLET_ADDRESS --pass x</code></p>
+    </div>
+  </div>
+
+  <script>
+    function formatHashrate(h) {
+      if (h >= 1e9) return (h / 1e9).toFixed(2) + ' GH/s';
+      if (h >= 1e6) return (h / 1e6).toFixed(2) + ' MH/s';
+      if (h >= 1e3) return (h / 1e3).toFixed(2) + ' KH/s';
+      return h.toFixed(0) + ' H/s';
+    }
+
+    function formatXMR(atomic) {
+      return (atomic / 1e12).toFixed(6);
+    }
+
+    function shortAddr(addr) {
+      if (!addr) return '-';
+      return addr.substring(0, 10) + '...' + addr.substring(addr.length - 6);
+    }
+
+    function timeAgo(dateStr) {
+      const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
+      if (diff < 60) return Math.floor(diff) + 's ago';
+      if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+      return Math.floor(diff / 86400) + 'd ago';
+    }
+
+    async function fetchStats() {
+      try {
+        const res = await fetch('/api/stats');
+        const data = await res.json();
+
+        document.getElementById('poolHashrate').innerHTML = formatHashrate(data.pool.hashrate);
+        document.getElementById('minersOnline').textContent = data.pool.miners_online;
+        document.getElementById('blockHeight').textContent = data.pool.current_height.toLocaleString();
+        document.getElementById('poolFee').textContent = data.pool.fee;
+
+        const blocksBody = document.getElementById('blocksBody');
+        blocksBody.innerHTML = data.blocks.map(b => `
+          <tr>
+            <td>${b.height.toLocaleString()}</td>
+            <td class="status-${b.status}">${b.status} (${b.confirmations})</td>
+            <td>${formatXMR(b.reward)} XMR</td>
+            <td class="addr">${shortAddr(b.finder)}</td>
+            <td>${timeAgo(b.found_at)}</td>
+          </tr>
+        `).join('');
+
+        const payoutsBody = document.getElementById('payoutsBody');
+        payoutsBody.innerHTML = data.payouts.map(p => `
+          <tr>
+            <td class="addr">${shortAddr(p.miner)}</td>
+            <td>${formatXMR(p.amount)} XMR</td>
+            <td class="hash">${p.tx_hash ? shortAddr(p.tx_hash) : '-'}</td>
+            <td class="status-${p.status}">${p.status}</td>
+            <td>${timeAgo(p.created_at)}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error('Failed to fetch stats:', err);
+      }
+    }
+
+    async function lookupMiner() {
+      const address = document.getElementById('minerAddress').value.trim();
+      const errorEl = document.getElementById('error');
+      const infoEl = document.getElementById('minerInfo');
+
+      errorEl.style.display = 'none';
+      infoEl.classList.remove('visible');
+
+      if (!address) {
+        errorEl.textContent = 'Please enter a wallet address';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/miner/' + address);
+        if (!res.ok) {
+          errorEl.textContent = 'Miner not found. Start mining to see stats.';
+          errorEl.style.display = 'block';
+          return;
+        }
+        const data = await res.json();
+
+        document.getElementById('minerHashrate').innerHTML = formatHashrate(data.hashrate);
+        document.getElementById('minerHashes').textContent = parseInt(data.total_hashes).toLocaleString();
+        document.getElementById('minerPending').innerHTML = formatXMR(data.pending_balance) + '<span class="unit"> XMR</span>';
+        document.getElementById('minerPaid').innerHTML = formatXMR(data.paid_balance) + '<span class="unit"> XMR</span>';
+
+        infoEl.classList.add('visible');
+      } catch (err) {
+        errorEl.textContent = 'Error looking up miner: ' + err.message;
+        errorEl.style.display = 'block';
+      }
+    }
+
+    // Initial fetch and auto-refresh
+    fetchStats();
+    setInterval(fetchStats, 15000);
+
+    // Enter key support for search
+    document.getElementById('minerAddress').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') lookupMiner();
+    });
+  </script>
+</body>
+</html>

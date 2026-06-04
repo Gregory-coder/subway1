@@ -1,0 +1,48 @@
+{
+  "pool": {
+    "address": "YOUR_POOL_WALLET_ADDRESS",
+    "fee": 0.001,
+    "pplnsWindow": 8640,
+    "blockConfirmations": 10,
+    "payoutInterval": 60000
+  },
+  "stratum": {
+    "host": "0.0.0.0",
+    "port": 3333
+  },
+  "vardiff": {
+    "minDiff": 1000,
+    "maxDiff": 1000000,
+    "targetTime": 30,
+    "retargetTime": 90,
+    "variancePercent": 30
+  },
+  "daemon": {
+    "host": "monerod",
+    "port": 18081,
+    "user": "",
+    "password": ""
+  },
+  "wallet": {
+    "host": "monero-wallet-rpc",
+    "port": 18082,
+    "user": "rpc_user",
+    "password": "rpc_password"
+  },
+  "redis": {
+    "host": "redis",
+    "port": 6379
+  },
+  "database": {
+    "host": "postgres",
+    "port": 5432,
+    "database": "xmr_pool",
+    "user": "pool",
+    "password": "poolpassword"
+  },
+  "api": {
+    "host": "0.0.0.0",
+    "port": 8080
+  },
+  "blockPollingInterval": 1000
+}
